@@ -6,10 +6,17 @@
 
 void inject(PROCESS_INFORMATION *pi)
 {
+	void *mem;
 	HANDLE rt;
 	LPTHREAD_START_ROUTINE proc;
-	const char *param = "wintty-hook.dll";
-	void *mem = VirtualAllocEx(pi->hProcess, NULL,
+
+	char param[MAX_PATH], *c;
+	GetModuleFileName(NULL, param, MAX_PATH);
+	c = strrchr(param, '\\');
+	c[1] = '\0';
+	strncat(param, "wintty-hook.dll", MAX_PATH);
+
+	mem = VirtualAllocEx(pi->hProcess, NULL,
 		strlen(param) + 1, MEM_COMMIT, PAGE_READWRITE);
 	if (!mem) {
 		fprintf(stderr, "Failed to allocate memory in remote process\n");
