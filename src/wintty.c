@@ -160,6 +160,10 @@ static int run_process(char *argv[], int argc)
 		if (WM_QUIT == msg.message || !is_process_alive(pi.hProcess))
 			break;
 	}
+
+	if (is_process_alive(pi.hProcess))
+		TerminateProcess(pi.hProcess, EXIT_SUCCESS);
+
 	return EXIT_SUCCESS;
 }
 
@@ -201,6 +205,11 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		ir.Event.KeyEvent.dwControlKeyState = 0;
 
 		WriteConsoleInput(hstdin, &ir, 1, NULL);
+		return 0;
+		break;
+
+	case WM_DESTROY:
+		PostQuitMessage(EXIT_SUCCESS);
 		return 0;
 		break;
 
