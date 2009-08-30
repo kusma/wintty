@@ -5,6 +5,10 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#ifdef _MSC_VER
+#define strdup _strdup
+#endif
+
 void die(char *fmt, ...)
 {
 	va_list va;
@@ -76,14 +80,23 @@ static int is_process_alive(HANDLE proc)
 
 static int run_process(char *argv[], int argc)
 {
+	int i;
 	static STARTUPINFO si;
 	PROCESS_INFORMATION pi;
 	MSG msg;
+	char *cmd = strdup(argv[0]);
+
+	/* concatenate argv */
+	for (i = 1; i < argc; ++i) {
+		cmd = realloc(cmd, strlen(cmd) + strlen(argv[i]) + 2);
+		strcat(cmd, " ");
+		strcat(cmd, argv[i]);
+	}
 
 	si.cb = sizeof(si);
 	si.lpTitle = "ttywin32";
 
-	if (!CreateProcess(NULL, argv[0], NULL, NULL, FALSE,
+	if (!CreateProcess(NULL, cmd, NULL, NULL, FALSE,
 		CREATE_SUSPENDED, NULL, NULL, &si, &pi))
 		die("CreateProcess failed!\n");
 
