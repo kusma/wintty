@@ -11,10 +11,14 @@
 
 void die(char *fmt, ...)
 {
+	char temp[4096];
 	va_list va;
 	va_start(va, fmt);
 	vfprintf(stderr, fmt, va);
+	vsnprintf(temp, sizeof(temp), fmt, va);
 	va_end(va);
+
+	MessageBox(NULL, temp, NULL, MB_OK | MB_ICONERROR);
 	exit(EXIT_FAILURE);
 }
 
@@ -59,9 +63,12 @@ static void update_console(HANDLE hstdout)
 	InvalidateRect(main_wnd, NULL, FALSE);
 }
 
+HANDLE hstdout, hstdin;
 static DWORD WINAPI monitor(LPVOID param)
 {
-	HANDLE hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+	hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
+	hstdin = CreateFile("CONIN$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
 
 	while (1) {
@@ -79,6 +86,22 @@ static int is_process_alive(HANDLE proc)
 {
 	DWORD ret;
 	return GetExitCodeProcess(proc, &ret) && STILL_ACTIVE == ret;
+}
+
+static HWND get_console_wnd()
+{
+	char old_title[1024];
+	HWND ret;
+
+	static HWND (WINAPI *GetConsoleWindow)(VOID) = NULL;
+	if (NULL == GetConsoleWindow) GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibrary("KERNEL32.dll"), "GetConsoleWindow");
+	if (NULL != GetConsoleWindow) GetConsoleWindow();
+
+	GetConsoleTitle(old_title, sizeof(old_title));
+	SetConsoleTitle("wintty-hideme");
+	ret = FindWindow(NULL, "wintty-hideme");
+	SetConsoleTitle(old_title);
+	return ret;
 }
 
 static int run_process(char *argv[], int argc)
@@ -107,6 +130,7 @@ static int run_process(char *argv[], int argc)
 	Sleep(100); /* HACK: wait for monitor thread to be operational */
 
 	ResumeThread(pi.hThread);
+	ShowWindow(get_console_wnd(), SW_HIDE);
 	while (GetMessage(&msg, NULL, 0, 0)) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
@@ -118,10 +142,14 @@ static int run_process(char *argv[], int argc)
 
 static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	if (msg == WM_PAINT) {
-		int y;
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(wnd, &ps);
+	int y;
+	PAINTSTRUCT ps;
+	INPUT_RECORD ir = {0};
+	HDC hdc;
+
+	switch (msg) {
+	case WM_PAINT:
+		hdc = BeginPaint(wnd, &ps);
 
 		SelectObject(hdc, GetStockObject(SYSTEM_FIXED_FONT));
 
@@ -138,8 +166,24 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		}
 		EndPaint(wnd, &ps);
 		return 0;
-	} else
+		break;
+
+	case WM_CHAR:
+		ir.EventType = KEY_EVENT;
+		ir.Event.KeyEvent.bKeyDown = !(lparam & (1UL<<31));
+		ir.Event.KeyEvent.wRepeatCount = lparam & ((1<<16)-1);
+		ir.Event.KeyEvent.wVirtualKeyCode = LOBYTE(VkKeyScan(wparam));
+		ir.Event.KeyEvent.wVirtualScanCode = MapVirtualKey(wparam, 0);
+		ir.Event.KeyEvent.uChar.AsciiChar = wparam;
+		ir.Event.KeyEvent.dwControlKeyState = 0;
+
+		WriteConsoleInput(hstdin, &ir, 1, NULL);
+		return 0;
+		break;
+
+	default:
 		return DefWindowProc(wnd, msg, wparam, lparam);
+	}
 }
 
 int main(int argc, char *argv[])
@@ -175,6 +219,9 @@ int main(int argc, char *argv[])
 
 	ShowWindow(main_wnd, TRUE);
 	UpdateWindow(main_wnd);
+
+	AllocConsole();
+	ShowWindow(get_console_wnd(), SW_HIDE);
 
 	ret = run_process(argv + 1, argc - 1);
 
