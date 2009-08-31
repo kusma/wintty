@@ -1,8 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+void die(char *fmt, ...)
+{
+	va_list va;
+	va_start(va, fmt);
+	vfprintf(stderr, fmt, va);
+	va_end(va);
+	exit(EXIT_FAILURE);
+}
 
 FILE *fp = NULL;
 void update_console(HANDLE hstdout)
@@ -14,10 +24,8 @@ void update_console(HANDLE hstdout)
 
 	if (!fp) {
 		fp = fopen("output.txt", "w");
-		if (!fp) {
-			fprintf(stderr, "failed to open output.txt\n");
-			exit(EXIT_FAILURE);
-		}
+		if (!fp)
+			die("failed to open output.txt\n");
 	}
 
 	MessageBeep(-1);
@@ -57,10 +65,8 @@ int run_process(char *argv[], int argc)
 	si.lpTitle = "ttywin32";
 
 	if (!CreateProcess(NULL, argv[0], NULL, NULL, FALSE,
-		CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
-		fprintf(stderr, "CreateProcess failed!\n");
-		exit(EXIT_FAILURE);
-	}
+		CREATE_SUSPENDED, NULL, NULL, &si, &pi))
+		die("CreateProcess failed!\n");
 
 	CreateThread(NULL, 0, monitor, NULL, 0, NULL);
 	Sleep(100); /* HACK: wait for monitor thread to be operational */
@@ -74,10 +80,8 @@ int run_process(char *argv[], int argc)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		fprintf(stderr, "usage: wintty.exe shell.exe\n");
-		return EXIT_FAILURE;
-	}
+	if (argc < 2)
+		die("usage: wintty.exe shell.exe\n");
 
 	return run_process(argv + 1, argc - 1);
 }
