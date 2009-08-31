@@ -13,7 +13,7 @@ test: wintty$X test-host$X
 	./wintty$X test-host$X
 
 wintty$X: wintty.o
-	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@
+	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -lgdi32 -o $@
 
 test-host$X: test-host.o
 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) -o $@
