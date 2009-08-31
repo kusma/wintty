@@ -43,12 +43,15 @@ static COLORREF palette[16] = {
 	RGB(HI, HI, HI)
 };
 
-static CHAR_INFO buffer[80 * 25];
+#define CONSOLE_WIDTH 80
+#define CONSOLE_HEIGHT 50
+static CHAR_INFO buffer[CONSOLE_WIDTH * CONSOLE_HEIGHT];
+
 static HWND main_wnd;
 
 static void update_console(HANDLE hstdout)
 {
-	COORD pos = {0, 0}, size = {80, 25};
+	COORD pos = {0, 0}, size = {CONSOLE_WIDTH, CONSOLE_HEIGHT};
 	CONSOLE_SCREEN_BUFFER_INFO ci;
 
 	GetConsoleScreenBufferInfo(hstdout, &ci);
@@ -58,7 +61,7 @@ static void update_console(HANDLE hstdout)
 
 static DWORD WINAPI monitor(LPVOID param)
 {
-	HANDLE hstdout = hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+	HANDLE hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
 
 	while (1) {
@@ -124,10 +127,10 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 		/* ps.rcPaint */
 		SetBkMode(hdc, OPAQUE);
-		for (y = 0; y < 25; ++y) {
+		for (y = 0; y < CONSOLE_HEIGHT; ++y) {
 			int x;
-			CHAR_INFO *src = &buffer[y * 80];
-			for (x = 0; x < 80; ++x) {
+			CHAR_INFO *src = &buffer[y * CONSOLE_WIDTH];
+			for (x = 0; x < CONSOLE_WIDTH; ++x) {
 				SetTextColor(hdc, palette[src[x].Attributes & 15]);
 				SetBkColor(hdc, palette[(src[x].Attributes >> 4) & 15]);
 				TextOut(hdc, x * 8, y * 15, &src[x].Char.AsciiChar, 1);
