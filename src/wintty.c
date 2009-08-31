@@ -22,6 +22,18 @@ void die(char *fmt, ...)
 	exit(EXIT_FAILURE);
 }
 
+void warn(char *fmt, ...)
+{
+	char temp[4096];
+	va_list va;
+	va_start(va, fmt);
+	vfprintf(stderr, fmt, va);
+	vsnprintf(temp, sizeof(temp), fmt, va);
+	va_end(va);
+
+	MessageBox(NULL, temp, NULL, MB_OK | MB_ICONWARNING);
+}
+
 #define LI 128
 #define MI 192
 #define HI 255
@@ -111,6 +123,8 @@ static int run_process(char *argv[], int argc)
 	PROCESS_INFORMATION pi;
 	MSG msg;
 	char *cmd = strdup(argv[0]);
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	COORD size = {CONSOLE_WIDTH, CONSOLE_HEIGHT};
 
 	/* concatenate argv */
 	for (i = 1; i < argc; ++i) {
@@ -131,6 +145,15 @@ static int run_process(char *argv[], int argc)
 
 	ResumeThread(pi.hThread);
 	ShowWindow(get_console_wnd(), SW_HIDE);
+	SetConsoleScreenBufferSize(hstdout, size);
+
+	GetConsoleScreenBufferInfo(hstdout, &sbi);
+	sbi.srWindow.Left = 0;
+	sbi.srWindow.Right = CONSOLE_WIDTH - 1;
+	sbi.srWindow.Top = sbi.srWindow.Bottom - CONSOLE_HEIGHT + 1;
+	if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
+		warn("Failed to set console window size");
+
 	while (GetMessage(&msg, NULL, 0, 0)) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
