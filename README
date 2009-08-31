@@ -1,0 +1,22 @@
+This is the WinTTY terminal emulator for Microsoft Windows.
+
+Compile
+=======
+WinTTY compiles using MinGW or Microsoft Visual Studio 2008.
+
+Building with MinGW
+-------------------
+Simply run "make". The resulting executable ("wintty.exe") should appear
+in the root of the working directory.
+
+Building with Microsoft Visual Studio 2008
+------------------------------------------
+Open vcbuild/wintty.sln, and select "Build" -> "Build Solution" from the
+menu. The resulting executable ("wintty.exe") should appear in
+./vcbuild/Debug for Debug builds, or ./vcbuild/Release for Release builds.
+
+Usage
+=====
+run "wintty.exe %COMSPEC%" to run from cmd.exe, or "wintty.exe /bin/sh"
+to run from the msys environment. Both command launches a new shell of
+the same type as the shell it was invoked from.
