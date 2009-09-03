@@ -59,15 +59,64 @@ static COLORREF palette[16] = {
 	RGB(HI, HI, HI)
 };
 
-#define CONSOLE_WIDTH 80
-#define CONSOLE_HEIGHT 50
-static CHAR_INFO buffer[CONSOLE_WIDTH * CONSOLE_HEIGHT];
+static HANDLE hstdout, hstdin;
+
+CRITICAL_SECTION console_cs;
+static int console_width = 0;
+static int console_height = 0;
+/* COORD console_size; */
+static CHAR_INFO *buffer = NULL;
+static void update_console(HANDLE hstdout);
+
+void set_console_size(int new_width, int new_height)
+{
+	COORD size = {new_width, new_height};
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+	if (new_width == console_width && new_height == console_height)
+		return;
+
+	if (new_width > console_width || new_height > console_height) {
+
+		/* extending the buffer: set size, then window */
+		if (!SetConsoleScreenBufferSize(hstdout, size))
+			die("Failed to set console buffer size <%d, %d> (%d)", size.X, size.Y, GetLastError());
+
+		GetConsoleScreenBufferInfo(hstdout, &sbi);
+		sbi.srWindow.Left = 0;
+		sbi.srWindow.Right = new_width - 1;
+		sbi.srWindow.Top = sbi.srWindow.Bottom - new_height + 1;
+		if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
+			die("Failed to set console window size");
+	} else {
+		/* shrinking the buffer: set window, then size */
+		GetConsoleScreenBufferInfo(hstdout, &sbi);
+		sbi.srWindow.Left = 0;
+		sbi.srWindow.Right = new_width - 1;
+		sbi.srWindow.Top = sbi.srWindow.Bottom - new_height + 1;
+		if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
+			die("Failed to set console window size");
+
+		if (!SetConsoleScreenBufferSize(hstdout, size))
+			die("Failed to set console buffer size <%d, %d> (%d)", size.X, size.Y, GetLastError());
+	}
+
+	console_width = new_width;
+	console_height = new_height;
+	if (new_width != 0 && new_height != 0) {
+		buffer = realloc(buffer, sizeof(CHAR_INFO) * new_width * new_height);
+		if (NULL == buffer)
+			die("failed to allocate console buffer");
+	}
+
+	update_console(hstdout);
+}
 
 static HWND main_wnd;
 
 static void update_console(HANDLE hstdout)
 {
-	COORD pos = {0, 0}, size = {CONSOLE_WIDTH, CONSOLE_HEIGHT};
+	COORD pos = {0, 0}, size = {console_width, console_height};
 	CONSOLE_SCREEN_BUFFER_INFO ci;
 
 	GetConsoleScreenBufferInfo(hstdout, &ci);
@@ -75,19 +124,17 @@ static void update_console(HANDLE hstdout)
 	InvalidateRect(main_wnd, NULL, FALSE);
 }
 
-HANDLE hstdout, hstdin;
 static DWORD WINAPI monitor(LPVOID param)
 {
-	hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
-		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
-	hstdin = CreateFile("CONIN$", GENERIC_WRITE | GENERIC_READ,
-		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
-
 	while (1) {
 		DWORD res = WaitForSingleObject(hstdout, INFINITE);
 		if (WAIT_OBJECT_0 == res) {
 			Sleep(10);
+
+			EnterCriticalSection(&console_cs);
 			update_console(hstdout);
+			LeaveCriticalSection(&console_cs);
+
 			ResetEvent(hstdout);
 		}
 	}
@@ -123,8 +170,6 @@ static int run_process(char *argv[], int argc)
 	PROCESS_INFORMATION pi;
 	MSG msg;
 	char *cmd = strdup(argv[0]);
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	COORD size = {CONSOLE_WIDTH, CONSOLE_HEIGHT};
 
 	/* concatenate argv */
 	for (i = 1; i < argc; ++i) {
@@ -144,15 +189,7 @@ static int run_process(char *argv[], int argc)
 	Sleep(100); /* HACK: wait for monitor thread to be operational */
 
 	ResumeThread(pi.hThread);
-	ShowWindow(get_console_wnd(), SW_HIDE);
-	SetConsoleScreenBufferSize(hstdout, size);
-
-	GetConsoleScreenBufferInfo(hstdout, &sbi);
-	sbi.srWindow.Left = 0;
-	sbi.srWindow.Right = CONSOLE_WIDTH - 1;
-	sbi.srWindow.Top = sbi.srWindow.Bottom - CONSOLE_HEIGHT + 1;
-	if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
-		warn("Failed to set console window size");
+/*	ShowWindow(get_console_wnd(), SW_HIDE); */
 
 	while (GetMessage(&msg, NULL, 0, 0)) {
 		TranslateMessage(&msg);
@@ -175,6 +212,12 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 	HDC hdc;
 
 	switch (msg) {
+	case WM_SIZE:
+		EnterCriticalSection(&console_cs);
+		set_console_size((LOWORD(lparam) + 7) / 8, (HIWORD(lparam) + 14) / 15);
+		LeaveCriticalSection(&console_cs);
+		break;
+
 	case WM_PAINT:
 		hdc = BeginPaint(wnd, &ps);
 
@@ -182,10 +225,10 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 		/* ps.rcPaint */
 		SetBkMode(hdc, OPAQUE);
-		for (y = 0; y < CONSOLE_HEIGHT; ++y) {
+		for (y = 0; y < console_height; ++y) {
 			int x;
-			CHAR_INFO *src = &buffer[y * CONSOLE_WIDTH];
-			for (x = 0; x < CONSOLE_WIDTH; ++x) {
+			CHAR_INFO *src = &buffer[y * console_width];
+			for (x = 0; x < console_width; ++x) {
 				SetTextColor(hdc, palette[src[x].Attributes & 15]);
 				SetBkColor(hdc, palette[(src[x].Attributes >> 4) & 15]);
 				TextOut(hdc, x * 8, y * 15, &src[x].Char.AsciiChar, 1);
@@ -245,15 +288,24 @@ int main(int argc, char *argv[])
 	if (!RegisterClassEx(&wc))
 		die("Failed to register window class");
 
+	if (!AllocConsole())
+		die("Failed to allocate console");
+
+	hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
+	hstdin = CreateFile("CONIN$", GENERIC_WRITE | GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
+
+	InitializeCriticalSection(&console_cs);
+
+	ShowWindow(get_console_wnd(), SW_HIDE);
+
 	main_wnd = CreateWindowEx(0, "MainWindow", "WinTTY",
 		WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
 		CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, inst, NULL);
 
 	ShowWindow(main_wnd, TRUE);
 	UpdateWindow(main_wnd);
-
-	AllocConsole();
-	ShowWindow(get_console_wnd(), SW_HIDE);
 
 	ret = run_process(argv + 1, argc - 1);
 
