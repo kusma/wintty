@@ -245,6 +245,27 @@ int main(int argc, char *argv[])
 	if (!RegisterClassEx(&wc))
 		die("Failed to register window class");
 
+#if 1
+	/* window station path */
+	{
+		HWINSTA old_ws = GetProcessWindowStation();
+		HWINSTA ws = CreateWindowStation(NULL, 1, WINSTA_ALL_ACCESS, NULL);
+		SetProcessWindowStation(ws);
+		if (!AllocConsole())
+			die("Failed to allocate console");
+		SetProcessWindowStation(old_ws);
+	}
+#else
+	if (!AllocConsole())
+		die("Failed to allocate console");
+	ShowWindow(get_console_wnd(), SW_HIDE);
+#endif
+
+	hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
+	hstdin = CreateFile("CONIN$", GENERIC_WRITE | GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
+
 	main_wnd = CreateWindowEx(0, "MainWindow", "WinTTY",
 		WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
 		CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, inst, NULL);
