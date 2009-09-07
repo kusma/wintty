@@ -229,8 +229,10 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 			int x;
 			CHAR_INFO *src = &buffer[y * console_width];
 			for (x = 0; x < console_width; ++x) {
-				SetTextColor(hdc, palette[src[x].Attributes & 15]);
-				SetBkColor(hdc, palette[(src[x].Attributes >> 4) & 15]);
+				if (!x || src[x].Attributes != src[x-1].Attributes) {
+					SetTextColor(hdc, palette[src[x].Attributes & 15]);
+					SetBkColor(hdc, palette[(src[x].Attributes >> 4) & 15]);
+				}
 				TextOut(hdc, x * 8, y * 15, &src[x].Char.AsciiChar, 1);
 			}
 		}
