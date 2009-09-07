@@ -120,10 +120,19 @@ static void update_console(HANDLE hstdout)
 {
 	COORD pos = {0, 0}, size = {console_width, console_height};
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-
 	GetConsoleScreenBufferInfo(hstdout, &sbi);
-	if (!ReadConsoleOutput(hstdout, buffer, size, pos, &sbi.srWindow))
-		die("failed to read console output (%d)", GetLastError());
+
+	if (!ReadConsoleOutput(hstdout, buffer, size, pos, &sbi.srWindow)) {
+		int y;
+		size.Y = 1;
+		for (y = 0; y < console_height; ++y) {
+			CHAR_INFO *dst = &buffer[y * console_width];
+			if (!ReadConsoleOutput(hstdout, dst, size, pos, &sbi.srWindow))
+				die("failed to read console output (%d)", GetLastError());
+			sbi.srWindow.Top++;
+			sbi.srWindow.Bottom = sbi.srWindow.Top;
+		}
+	}
 	InvalidateRect(main_wnd, NULL, FALSE);
 }
 
