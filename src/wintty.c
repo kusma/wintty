@@ -175,11 +175,11 @@ static HWND get_console_wnd()
 	return ret;
 }
 
+static PROCESS_INFORMATION pi;
 static int run_process(char *argv[], int argc)
 {
 	int i;
 	static STARTUPINFO si;
-	PROCESS_INFORMATION pi;
 	HANDLE hthread;
 	MSG msg;
 	char *cmd = strdup(argv[0]);
@@ -195,7 +195,8 @@ static int run_process(char *argv[], int argc)
 	si.lpTitle = "ttywin32";
 
 	if (!CreateProcess(NULL, cmd, NULL, NULL, FALSE,
-		CREATE_SUSPENDED, NULL, NULL, &si, &pi))
+		CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP, NULL, NULL,
+		&si, &pi))
 		die("CreateProcess failed!\n");
 
 	hthread = CreateThread(NULL, 0, monitor, NULL, 0, NULL);
@@ -284,6 +285,27 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		return 0;
 		break;
 
+	case WM_KEYDOWN:
+		if ('C' == wparam && GetKeyState(VK_CONTROL))
+			GenerateConsoleCtrlEvent(CTRL_C_EVENT, (DWORD)pi.hProcess);
+		switch (wparam) {
+			case VK_UP:
+			case VK_DOWN:
+			case VK_LEFT:
+			case VK_RIGHT:
+				ir.EventType = KEY_EVENT;
+				ir.Event.KeyEvent.bKeyDown = !(lparam & (1UL<<31));
+				ir.Event.KeyEvent.wRepeatCount = lparam & ((1<<16)-1);
+				ir.Event.KeyEvent.wVirtualKeyCode = wparam;
+				ir.Event.KeyEvent.wVirtualScanCode = 0;
+				ir.Event.KeyEvent.uChar.AsciiChar = 0;
+				ir.Event.KeyEvent.dwControlKeyState = 0;
+
+				WriteConsoleInput(hstdin, &ir, 1, NULL);
+				break;
+		}
+		break;
+
 	case WM_CHAR:
 		ir.EventType = KEY_EVENT;
 		ir.Event.KeyEvent.bKeyDown = !(lparam & (1UL<<31));
@@ -344,7 +366,7 @@ int main(int argc, char *argv[])
 
 	InitializeCriticalSection(&console_cs);
 
-	ShowWindow(get_console_wnd(), SW_HIDE);
+/*	ShowWindow(get_console_wnd(), SW_HIDE); */
 
 	main_wnd = CreateWindowEx(0, "MainWindow", "WinTTY",
 		WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
