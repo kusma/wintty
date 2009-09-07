@@ -180,6 +180,7 @@ static int run_process(char *argv[], int argc)
 	int i;
 	static STARTUPINFO si;
 	PROCESS_INFORMATION pi;
+	HANDLE hthread;
 	MSG msg;
 	char *cmd = strdup(argv[0]);
 
@@ -197,7 +198,10 @@ static int run_process(char *argv[], int argc)
 		CREATE_SUSPENDED, NULL, NULL, &si, &pi))
 		die("CreateProcess failed!\n");
 
-	CreateThread(NULL, 0, monitor, NULL, 0, NULL);
+	hthread = CreateThread(NULL, 0, monitor, NULL, 0, NULL);
+	if (!hthread)
+		die("Failed to launch monitor thread");
+
 	Sleep(100); /* HACK: wait for monitor thread to be operational */
 
 	ResumeThread(pi.hThread);
@@ -212,6 +216,8 @@ static int run_process(char *argv[], int argc)
 
 	if (is_process_alive(pi.hProcess))
 		TerminateProcess(pi.hProcess, EXIT_SUCCESS);
+
+	TerminateThread(hthread, EXIT_SUCCESS);
 
 	return EXIT_SUCCESS;
 }
