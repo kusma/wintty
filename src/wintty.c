@@ -122,7 +122,8 @@ static void update_console(HANDLE hstdout)
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	GetConsoleScreenBufferInfo(hstdout, &sbi);
-	ReadConsoleOutput(hstdout, buffer, size, pos, &sbi.srWindow);
+	if (!ReadConsoleOutput(hstdout, buffer, size, pos, &sbi.srWindow))
+		die("failed to read console output (%d)", GetLastError());
 	InvalidateRect(main_wnd, NULL, FALSE);
 }
 
