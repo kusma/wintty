@@ -4,6 +4,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commctrl.h>
 
 #ifdef _MSC_VER
 #define strdup _strdup
@@ -64,7 +65,6 @@ static HANDLE hstdout, hstdin;
 CRITICAL_SECTION console_cs;
 static int console_width = 0;
 static int console_height = 0;
-/* COORD console_size; */
 static CHAR_INFO *buffer = NULL;
 static void update_console(HANDLE hstdout);
 
@@ -76,35 +76,37 @@ void set_console_size(int new_width, int new_height)
 	if (new_width == console_width && new_height == console_height)
 		return;
 
-	if (new_width > console_width || new_height > console_height) {
+	if (!new_width || !new_height)
+		return;
 
-		/* extending the buffer: set size, then window */
-		if (!SetConsoleScreenBufferSize(hstdout, size))
-			die("Failed to set console buffer size <%d, %d> (%d)", size.X, size.Y, GetLastError());
+	GetConsoleScreenBufferInfo(hstdout, &sbi);
+	if (new_width > sbi.dwSize.X || new_height > sbi.dwSize.Y)
+	{
+		sbi.dwSize.X = new_width > sbi.dwSize.X ? new_width : sbi.dwSize.X;
+		sbi.dwSize.Y = new_height > sbi.dwSize.Y ? new_height : sbi.dwSize.Y;
 
-		GetConsoleScreenBufferInfo(hstdout, &sbi);
-		sbi.srWindow.Left = 0;
-		sbi.srWindow.Right = new_width - 1;
-		sbi.srWindow.Top = sbi.srWindow.Bottom - new_height + 1;
-		if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
-			die("Failed to set console window size");
-	} else {
-		/* shrinking the buffer: set window, then size */
-		GetConsoleScreenBufferInfo(hstdout, &sbi);
-		sbi.srWindow.Left = 0;
-		sbi.srWindow.Right = new_width - 1;
-		sbi.srWindow.Top = sbi.srWindow.Bottom - new_height + 1;
-		if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
-			die("Failed to set console window size");
-
-		if (!SetConsoleScreenBufferSize(hstdout, size))
-			die("Failed to set console buffer size <%d, %d> (%d)", size.X, size.Y, GetLastError());
+		if (!SetConsoleScreenBufferSize(hstdout, sbi.dwSize))
+			die("Failed to set console buffer size <%d, %d> (%d)", size.X, size.Y, GetLastError());	
 	}
 
-	console_width = new_width;
-	console_height = new_height;
+	GetConsoleScreenBufferInfo(hstdout, &sbi);
+	if (new_width > sbi.dwMaximumWindowSize.X ||
+		new_height > sbi.dwMaximumWindowSize.Y) {
+		warn("Window size <%dx%d> is too big window! Maximum size is <%dx%d>",
+			new_width, new_height,
+			sbi.dwMaximumWindowSize.X, sbi.dwMaximumWindowSize.Y);
+		return;
+	}
+
+	sbi.srWindow.Right = sbi.srWindow.Left + new_width - 1;
+	sbi.srWindow.Bottom = sbi.srWindow.Top + new_height - 1;
+	if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
+		die("Failed to set console window size");
+
+	console_width = sbi.dwSize.X;
+	console_height = sbi.dwSize.Y;
 	if (new_width != 0 && new_height != 0) {
-		buffer = realloc(buffer, sizeof(CHAR_INFO) * new_width * new_height);
+		buffer = realloc(buffer, sizeof(CHAR_INFO) * console_width * console_height);
 		if (NULL == buffer)
 			die("failed to allocate console buffer");
 	}
@@ -112,15 +114,15 @@ void set_console_size(int new_width, int new_height)
 	update_console(hstdout);
 }
 
-static HWND main_wnd;
+static HWND main_wnd, sb_wnd;
 
 static void update_console(HANDLE hstdout)
 {
 	COORD pos = {0, 0}, size = {console_width, console_height};
-	CONSOLE_SCREEN_BUFFER_INFO ci;
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	GetConsoleScreenBufferInfo(hstdout, &ci);
-	ReadConsoleOutput(hstdout, buffer, size, pos, &ci.srWindow);
+	GetConsoleScreenBufferInfo(hstdout, &sbi);
+	ReadConsoleOutput(hstdout, buffer, size, pos, &sbi.srWindow);
 	InvalidateRect(main_wnd, NULL, FALSE);
 }
 
@@ -209,13 +211,39 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 	int y;
 	PAINTSTRUCT ps;
 	INPUT_RECORD ir = {0};
+	int sb_widths[] = { 64 };
 	HDC hdc;
 
 	switch (msg) {
+	case WM_CREATE:
+		sb_wnd = CreateWindowEx(0, STATUSCLASSNAME, NULL,
+					SBARS_SIZEGRIP | WS_VISIBLE | WS_CHILD,
+					0, 0, 0, 0,
+					wnd, NULL, GetModuleHandle(0), NULL);
+
+		SendMessage(sb_wnd, SB_SETPARTS, sizeof(sb_widths) / sizeof(int), (LPARAM)sb_widths);
+		SendMessage(sb_wnd, SB_SETTEXT, 0, (LPARAM)"-");
+		SendMessage(sb_wnd, SB_SETTEXT, 1, (LPARAM)"-");
+		break;
+
 	case WM_SIZE:
-		EnterCriticalSection(&console_cs);
-		set_console_size((LOWORD(lparam) + 7) / 8, (HIWORD(lparam) + 14) / 15);
-		LeaveCriticalSection(&console_cs);
+		{
+			char temp[16];
+			RECT sb_rect;
+			int width  = LOWORD(lparam), height = HIWORD(lparam), sb_height;
+
+			GetClientRect(sb_wnd, &sb_rect);
+			sb_height = sb_rect.bottom - sb_rect.top;
+
+			EnterCriticalSection(&console_cs);
+			set_console_size((width + 7) / 8, (height - sb_height + 14) / 15);
+			LeaveCriticalSection(&console_cs);
+
+			MoveWindow(sb_wnd, 0, height - sb_height, width, sb_height, TRUE);
+
+			snprintf(temp, 16, "%dx%d", (width + 7) / 8, (height - sb_height + 14) / 15);
+			SendMessage(sb_wnd, SB_SETTEXT, 0, (LPARAM)temp);
+		}
 		break;
 
 	case WM_PAINT:
