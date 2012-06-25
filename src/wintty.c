@@ -258,7 +258,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 			MoveWindow(sb_wnd, 0, height - sb_height, width, sb_height, TRUE);
 
-			snprintf(temp, 16, "%dx%d", (width + 7) / 8, (height - sb_height + 14) / 15);
+			_snprintf(temp, 16, "%dx%d", (width + 7) / 8, (height - sb_height + 14) / 15);
 			SendMessage(sb_wnd, SB_SETTEXT, 0, (LPARAM)temp);
 		}
 		break;
