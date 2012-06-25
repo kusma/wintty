@@ -83,14 +83,12 @@ static DWORD WINAPI monitor(LPVOID param)
 	hstdin = CreateFileA("CONIN$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
 
-	while (1) {
-		DWORD res = WaitForSingleObject(hstdout, INFINITE);
-		if (WAIT_OBJECT_0 == res) {
-			Sleep(10);
-			update_console(hstdout);
-			ResetEvent(hstdout);
-		}
-	}
+	do {
+		ResetEvent(hstdout);
+		Sleep(10); /* don't spend ALL CPU power on redrawing */
+		update_console(hstdout);
+	} while (WaitForSingleObject(hstdout, INFINITE) == WAIT_OBJECT_0);
+
 	return EXIT_SUCCESS;
 }
 
