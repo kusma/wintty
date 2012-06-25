@@ -173,6 +173,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 	PAINTSTRUCT ps;
 	INPUT_RECORD ir = {0};
 	HDC hdc;
+	DWORD dummy;
 
 	switch (msg) {
 	case WM_PAINT:
@@ -204,7 +205,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		ir.Event.KeyEvent.uChar.AsciiChar = wparam;
 		ir.Event.KeyEvent.dwControlKeyState = 0;
 
-		WriteConsoleInput(hstdin, &ir, 1, NULL);
+		WriteConsoleInput(hstdin, &ir, 1, &dummy);
 		return 0;
 		break;
 
