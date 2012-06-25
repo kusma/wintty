@@ -19,7 +19,7 @@ void die(char *fmt, ...)
 	vsnprintf(temp, sizeof(temp), fmt, va);
 	va_end(va);
 
-	MessageBox(NULL, temp, NULL, MB_OK | MB_ICONERROR);
+	MessageBoxA(NULL, temp, NULL, MB_OK | MB_ICONERROR);
 	exit(EXIT_FAILURE);
 }
 
@@ -32,7 +32,7 @@ void warn(char *fmt, ...)
 	vsnprintf(temp, sizeof(temp), fmt, va);
 	va_end(va);
 
-	MessageBox(NULL, temp, NULL, MB_OK | MB_ICONWARNING);
+	MessageBoxA(NULL, temp, NULL, MB_OK | MB_ICONWARNING);
 }
 
 #define LI 128
@@ -138,18 +138,15 @@ static void update_console(HANDLE hstdout)
 
 static DWORD WINAPI monitor(LPVOID param)
 {
-	while (1) {
-		DWORD res = WaitForSingleObject(hstdout, INFINITE);
-		if (WAIT_OBJECT_0 == res) {
-			Sleep(10);
+	do {
+		ResetEvent(hstdout);
+		Sleep(10); /* don't spend ALL CPU power on redrawing */
 
-			EnterCriticalSection(&console_cs);
-			update_console(hstdout);
-			LeaveCriticalSection(&console_cs);
+		EnterCriticalSection(&console_cs);
+		update_console(hstdout);
+		LeaveCriticalSection(&console_cs);
+	} while (WaitForSingleObject(hstdout, INFINITE) == WAIT_OBJECT_0);
 
-			ResetEvent(hstdout);
-		}
-	}
 	return EXIT_SUCCESS;
 }
 
@@ -161,17 +158,17 @@ static int is_process_alive(HANDLE proc)
 
 static HWND get_console_wnd()
 {
-	char old_title[1024];
+	WCHAR old_title[1024];
 	HWND ret;
 
 	static HWND (WINAPI *GetConsoleWindow)(VOID) = NULL;
-	if (NULL == GetConsoleWindow) GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibrary("KERNEL32.dll"), "GetConsoleWindow");
+	if (NULL == GetConsoleWindow) GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibraryA("KERNEL32.dll"), "GetConsoleWindow");
 	if (NULL != GetConsoleWindow) GetConsoleWindow();
 
-	GetConsoleTitle(old_title, sizeof(old_title));
-	SetConsoleTitle("wintty-hideme");
-	ret = FindWindow(NULL, "wintty-hideme");
-	SetConsoleTitle(old_title);
+	GetConsoleTitleW(old_title, sizeof(old_title));
+	SetConsoleTitleA("wintty-hideme");
+	ret = FindWindowA(NULL, "wintty-hideme");
+	SetConsoleTitleW(old_title);
 	return ret;
 }
 
@@ -179,7 +176,7 @@ static PROCESS_INFORMATION pi;
 static int run_process(char *argv[], int argc)
 {
 	int i;
-	static STARTUPINFO si;
+	static STARTUPINFOA si;
 	HANDLE hthread;
 	MSG msg;
 	char *cmd = strdup(argv[0]);
@@ -194,7 +191,7 @@ static int run_process(char *argv[], int argc)
 	si.cb = sizeof(si);
 	si.lpTitle = "ttywin32";
 
-	if (!CreateProcess(NULL, cmd, NULL, NULL, FALSE,
+	if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE,
 		CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP, NULL, NULL,
 		&si, &pi))
 		die("CreateProcess failed!\n");
@@ -230,6 +227,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 	INPUT_RECORD ir = {0};
 	int sb_widths[] = { 64 };
 	HDC hdc;
+	DWORD dummy;
 
 	switch (msg) {
 	case WM_CREATE:
@@ -239,8 +237,8 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 					wnd, NULL, GetModuleHandle(0), NULL);
 
 		SendMessage(sb_wnd, SB_SETPARTS, sizeof(sb_widths) / sizeof(int), (LPARAM)sb_widths);
-		SendMessage(sb_wnd, SB_SETTEXT, 0, (LPARAM)"-");
-		SendMessage(sb_wnd, SB_SETTEXT, 1, (LPARAM)"-");
+		SendMessageA(sb_wnd, SB_SETTEXTA, 0, (LPARAM)"-");
+		SendMessageA(sb_wnd, SB_SETTEXTA, 1, (LPARAM)"-");
 		break;
 
 	case WM_SIZE:
@@ -259,7 +257,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 			MoveWindow(sb_wnd, 0, height - sb_height, width, sb_height, TRUE);
 
 			_snprintf(temp, 16, "%dx%d", (width + 7) / 8, (height - sb_height + 14) / 15);
-			SendMessage(sb_wnd, SB_SETTEXT, 0, (LPARAM)temp);
+			SendMessageA(sb_wnd, SB_SETTEXTA, 0, (LPARAM)temp);
 		}
 		break;
 
@@ -278,7 +276,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 					SetTextColor(hdc, palette[src[x].Attributes & 15]);
 					SetBkColor(hdc, palette[(src[x].Attributes >> 4) & 15]);
 				}
-				TextOut(hdc, x * 8, y * 15, &src[x].Char.AsciiChar, 1);
+				TextOutW(hdc, x * 8, y * 15, &src[x].Char.UnicodeChar, 1);
 			}
 		}
 		EndPaint(wnd, &ps);
@@ -315,7 +313,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		ir.Event.KeyEvent.uChar.AsciiChar = wparam;
 		ir.Event.KeyEvent.dwControlKeyState = 0;
 
-		WriteConsoleInput(hstdin, &ir, 1, NULL);
+		WriteConsoleInput(hstdin, &ir, 1, &dummy);
 		return 0;
 		break;
 
@@ -331,7 +329,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 int main(int argc, char *argv[])
 {
-	WNDCLASSEX wc;
+	WNDCLASSEXW wc;
 	HINSTANCE inst;
 	int ret;
 
@@ -350,25 +348,25 @@ int main(int argc, char *argv[])
 	wc.hCursor = LoadCursor(NULL, IDC_IBEAM);
 	wc.hbrBackground = (HBRUSH)0;
 	wc.lpszMenuName = NULL;
-	wc.lpszClassName = "MainWindow";
+	wc.lpszClassName = L"MainWindow";
 	wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
 
-	if (!RegisterClassEx(&wc))
+	if (!RegisterClassExW(&wc))
 		die("Failed to register window class");
 
 	if (!AllocConsole())
 		die("Failed to allocate console");
 
-	hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+	hstdout = CreateFileA("CONOUT$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
-	hstdin = CreateFile("CONIN$", GENERIC_WRITE | GENERIC_READ,
+	hstdin = CreateFileA("CONIN$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
 
 	InitializeCriticalSection(&console_cs);
 
 /*	ShowWindow(get_console_wnd(), SW_HIDE); */
 
-	main_wnd = CreateWindowEx(0, "MainWindow", "WinTTY",
+	main_wnd = CreateWindowExW(0, L"MainWindow", L"WinTTY",
 		WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
 		CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, inst, NULL);
 
