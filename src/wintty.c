@@ -18,7 +18,7 @@ void die(char *fmt, ...)
 	vsnprintf(temp, sizeof(temp), fmt, va);
 	va_end(va);
 
-	MessageBox(NULL, temp, NULL, MB_OK | MB_ICONERROR);
+	MessageBoxA(NULL, temp, NULL, MB_OK | MB_ICONERROR);
 	exit(EXIT_FAILURE);
 }
 
@@ -31,7 +31,7 @@ void warn(char *fmt, ...)
 	vsnprintf(temp, sizeof(temp), fmt, va);
 	va_end(va);
 
-	MessageBox(NULL, temp, NULL, MB_OK | MB_ICONWARNING);
+	MessageBoxA(NULL, temp, NULL, MB_OK | MB_ICONWARNING);
 }
 
 #define LI 128
@@ -78,9 +78,9 @@ static void update_console(HANDLE hstdout)
 HANDLE hstdout, hstdin;
 static DWORD WINAPI monitor(LPVOID param)
 {
-	hstdout = CreateFile("CONOUT$", GENERIC_WRITE | GENERIC_READ,
+	hstdout = CreateFileA("CONOUT$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
-	hstdin = CreateFile("CONIN$", GENERIC_WRITE | GENERIC_READ,
+	hstdin = CreateFileA("CONIN$", GENERIC_WRITE | GENERIC_READ,
 		FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
 
 	while (1) {
@@ -102,24 +102,24 @@ static int is_process_alive(HANDLE proc)
 
 static HWND get_console_wnd()
 {
-	char old_title[1024];
+	WCHAR old_title[1024];
 	HWND ret;
 
 	static HWND (WINAPI *GetConsoleWindow)(VOID) = NULL;
-	if (NULL == GetConsoleWindow) GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibrary("KERNEL32.dll"), "GetConsoleWindow");
+	if (NULL == GetConsoleWindow) GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibraryA("KERNEL32.dll"), "GetConsoleWindow");
 	if (NULL != GetConsoleWindow) GetConsoleWindow();
 
-	GetConsoleTitle(old_title, sizeof(old_title));
-	SetConsoleTitle("wintty-hideme");
-	ret = FindWindow(NULL, "wintty-hideme");
-	SetConsoleTitle(old_title);
+	GetConsoleTitleW(old_title, sizeof(old_title));
+	SetConsoleTitleA("wintty-hideme");
+	ret = FindWindowA(NULL, "wintty-hideme");
+	SetConsoleTitleW(old_title);
 	return ret;
 }
 
 static int run_process(char *argv[], int argc)
 {
 	int i;
-	static STARTUPINFO si;
+	static STARTUPINFOA si;
 	PROCESS_INFORMATION pi;
 	MSG msg;
 	char *cmd = strdup(argv[0]);
@@ -136,7 +136,7 @@ static int run_process(char *argv[], int argc)
 	si.cb = sizeof(si);
 	si.lpTitle = "ttywin32";
 
-	if (!CreateProcess(NULL, cmd, NULL, NULL, FALSE,
+	if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE,
 		CREATE_SUSPENDED, NULL, NULL, &si, &pi))
 		die("CreateProcess failed!\n");
 
@@ -189,7 +189,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 			for (x = 0; x < CONSOLE_WIDTH; ++x) {
 				SetTextColor(hdc, palette[src[x].Attributes & 15]);
 				SetBkColor(hdc, palette[(src[x].Attributes >> 4) & 15]);
-				TextOut(hdc, x * 8, y * 15, &src[x].Char.AsciiChar, 1);
+				TextOutW(hdc, x * 8, y * 15, &src[x].Char.UnicodeChar, 1);
 			}
 		}
 		EndPaint(wnd, &ps);
@@ -221,7 +221,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 int main(int argc, char *argv[])
 {
-	WNDCLASSEX wc;
+	WNDCLASSEXA wc;
 	HINSTANCE inst;
 	int ret;
 
@@ -243,10 +243,10 @@ int main(int argc, char *argv[])
 	wc.lpszClassName = "MainWindow";
 	wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
 
-	if (!RegisterClassEx(&wc))
+	if (!RegisterClassExA(&wc))
 		die("Failed to register window class");
 
-	main_wnd = CreateWindowEx(0, "MainWindow", "WinTTY",
+	main_wnd = CreateWindowExA(0, "MainWindow", "WinTTY",
 		WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
 		CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, inst, NULL);
 
