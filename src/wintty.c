@@ -65,7 +65,8 @@ static HANDLE hstdout, hstdin;
 CRITICAL_SECTION console_cs;
 static int console_width = 0;
 static int console_height = 0;
-static CHAR_INFO *buffer = NULL;
+static CHAR_INFO *buffers[2] = {NULL, NULL};
+static int current_buffer = 0;
 static void update_console(HANDLE hstdout);
 
 void set_console_size(int new_width, int new_height)
@@ -106,8 +107,9 @@ void set_console_size(int new_width, int new_height)
 	console_width = sbi.srWindow.Right - sbi.srWindow.Left + 1;
 	console_height = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
 	if (new_width != 0 && new_height != 0) {
-		buffer = realloc(buffer, sizeof(CHAR_INFO) * console_width * console_height);
-		if (NULL == buffer)
+		buffers[0] = realloc(buffers[0], sizeof(CHAR_INFO) * console_width * console_height);
+		buffers[1] = realloc(buffers[1], sizeof(CHAR_INFO) * console_width * console_height);
+		if (!buffers[0] || !buffers[1])
 			die("failed to allocate console buffer");
 	}
 
@@ -118,22 +120,33 @@ static HWND main_wnd, sb_wnd;
 
 static void update_console(HANDLE hstdout)
 {
+	int y;
 	COORD pos = {0, 0}, size = {console_width, console_height};
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	GetConsoleScreenBufferInfo(hstdout, &sbi);
 
-	if (!ReadConsoleOutput(hstdout, buffer, size, pos, &sbi.srWindow)) {
-		int y;
+	if (!ReadConsoleOutput(hstdout, buffers[!current_buffer], size, pos, &sbi.srWindow)) {
 		size.Y = 1;
 		for (y = 0; y < console_height; ++y) {
-			CHAR_INFO *dst = &buffer[y * console_width];
+			CHAR_INFO *dst = &buffers[!current_buffer][y * console_width];
 			if (!ReadConsoleOutput(hstdout, dst, size, pos, &sbi.srWindow))
 				die("failed to read console output (%d)", GetLastError());
 			sbi.srWindow.Top++;
 			sbi.srWindow.Bottom = sbi.srWindow.Top;
 		}
 	}
-	InvalidateRect(main_wnd, NULL, FALSE);
+
+	for (y = 0; y < console_height; ++y) {
+		CHAR_INFO *a = buffers[current_buffer] + y * console_width;
+		CHAR_INFO *b = buffers[!current_buffer] + y * console_width;
+		if (memcmp(a, b, sizeof(*a) * console_width)) {
+			/* invalidate line */
+			RECT rcLine = {0, y * 15, console_width * 8, (y + 1) * 15};
+			InvalidateRect(main_wnd, &rcLine, FALSE);
+		}
+	}
+
+	current_buffer = !current_buffer;
 }
 
 static DWORD WINAPI monitor(LPVOID param)
@@ -223,6 +236,7 @@ static int run_process(char *argv[], int argc)
 static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	int y;
+	int starty, stopy;
 	PAINTSTRUCT ps;
 	INPUT_RECORD ir = {0};
 	int sb_widths[] = { 64 };
@@ -268,9 +282,13 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 		/* ps.rcPaint */
 		SetBkMode(hdc, OPAQUE);
-		for (y = 0; y < console_height; ++y) {
+
+		starty = ps.rcPaint.top / 15;
+		stopy  = (ps.rcPaint.bottom + 14) / 15;
+
+		for (y = starty; y <= stopy; ++y) {
 			int x;
-			CHAR_INFO *src = &buffer[y * console_width];
+			CHAR_INFO *src = &buffers[current_buffer][y * console_width];
 			for (x = 0; x < console_width; ++x) {
 				if (!x || src[x].Attributes != src[x-1].Attributes) {
 					SetTextColor(hdc, palette[src[x].Attributes & 15]);
