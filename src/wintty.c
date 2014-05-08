@@ -253,6 +253,14 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		SendMessageA(sb_wnd, SB_SETTEXTA, 1, (LPARAM)"-");
 		break;
 
+	case WM_SIZING:
+		{
+			RECT *rc = (LPRECT)lparam;
+			rc->right = rc->left + ((rc->right - rc->left + 4) / 8) * 8;
+			rc->bottom= rc->top + ((rc->bottom - rc->top + 7) / 15) * 15;
+		}
+		break;
+
 	case WM_SIZE:
 		{
 			char temp[16];
