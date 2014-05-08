@@ -173,8 +173,10 @@ static HWND get_console_wnd()
 	HWND ret;
 
 	static HWND (WINAPI *GetConsoleWindow)(VOID) = NULL;
-	if (NULL == GetConsoleWindow) GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibraryA("KERNEL32.dll"), "GetConsoleWindow");
-	if (NULL != GetConsoleWindow) GetConsoleWindow();
+	if (NULL == GetConsoleWindow)
+		GetConsoleWindow = (HWND (WINAPI *)(VOID))GetProcAddress(LoadLibraryA("KERNEL32.dll"), "GetConsoleWindow");
+	if (NULL != GetConsoleWindow)
+		return GetConsoleWindow();
 
 	GetConsoleTitleW(old_title, sizeof(old_title));
 	SetConsoleTitleA("wintty-hideme");
