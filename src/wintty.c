@@ -251,7 +251,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		SendMessage(sb_wnd, SB_SETPARTS, sizeof(sb_widths) / sizeof(int), (LPARAM)sb_widths);
 		SendMessageA(sb_wnd, SB_SETTEXTA, 0, (LPARAM)"-");
 		SendMessageA(sb_wnd, SB_SETTEXTA, 1, (LPARAM)"-");
-		break;
+		return 0;
 
 	case WM_SIZING:
 		{
@@ -259,7 +259,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 			rc->right = rc->left + ((rc->right - rc->left + 4) / 8) * 8;
 			rc->bottom= rc->top + ((rc->bottom - rc->top + 7) / 15) * 15;
 		}
-		break;
+		return 0;
 
 	case WM_SIZE:
 		{
@@ -279,7 +279,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 			_snprintf(temp, 16, "%dx%d", (width + 7) / 8, (height - sb_height + 14) / 15);
 			SendMessageA(sb_wnd, SB_SETTEXTA, 0, (LPARAM)temp);
 		}
-		break;
+		return 0;
 
 	case WM_PAINT:
 		hdc = BeginPaint(wnd, &ps);
@@ -305,7 +305,6 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 		}
 		EndPaint(wnd, &ps);
 		return 0;
-		break;
 
 	case WM_KEYDOWN:
 		if ('C' == wparam && GetKeyState(VK_CONTROL))
@@ -326,7 +325,7 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 				WriteConsoleInput(hstdin, &ir, 1, NULL);
 				break;
 		}
-		break;
+		return 0;
 
 	case WM_CHAR:
 		ir.EventType = KEY_EVENT;
@@ -339,16 +338,13 @@ static LRESULT CALLBACK main_wnd_proc(HWND wnd, UINT msg, WPARAM wparam, LPARAM 
 
 		WriteConsoleInput(hstdin, &ir, 1, &dummy);
 		return 0;
-		break;
 
 	case WM_DESTROY:
 		PostQuitMessage(EXIT_SUCCESS);
 		return 0;
-		break;
-
-	default:
-		return DefWindowProc(wnd, msg, wparam, lparam);
 	}
+
+	return DefWindowProc(wnd, msg, wparam, lparam);
 }
 
 int main(int argc, char *argv[])
