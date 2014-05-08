@@ -153,12 +153,10 @@ static DWORD WINAPI monitor(LPVOID param)
 {
 	do {
 		ResetEvent(hstdout);
-		Sleep(10); /* don't spend ALL CPU power on redrawing */
-
 		EnterCriticalSection(&console_cs);
 		update_console(hstdout);
 		LeaveCriticalSection(&console_cs);
-	} while (WaitForSingleObject(hstdout, INFINITE) == WAIT_OBJECT_0);
+	} while (WaitForSingleObject(hstdout, 50) != WAIT_FAILED);
 
 	return EXIT_SUCCESS;
 }
