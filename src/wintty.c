@@ -103,8 +103,8 @@ void set_console_size(int new_width, int new_height)
 	if (!SetConsoleWindowInfo(hstdout, TRUE, &sbi.srWindow))
 		die("Failed to set console window size");
 
-	console_width = sbi.dwSize.X;
-	console_height = sbi.dwSize.Y;
+	console_width = sbi.srWindow.Right - sbi.srWindow.Left + 1;
+	console_height = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
 	if (new_width != 0 && new_height != 0) {
 		buffer = realloc(buffer, sizeof(CHAR_INFO) * console_width * console_height);
 		if (NULL == buffer)
